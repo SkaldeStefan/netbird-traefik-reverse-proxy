@@ -1,0 +1,73 @@
+services:
+  docker-socket-proxy:
+    image: ${DOCKER_SOCKET_PROXY_IMAGE:-tecnativa/docker-socket-proxy:0.3.0}
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - LOG_LEVEL=warning
+      - POST=0
+      - EVENTS=1
+      - PING=1
+      - VERSION=1
+      - INFO=1
+      - NETWORKS=1
+      - CONTAINERS=1
+    networks:
+      - socket-proxy
+
+  traefik:
+    image: ${TRAEFIK_IMAGE:-traefik:3.6}
+    restart: unless-stopped
+    depends_on:
+      - docker-socket-proxy
+    ports:
+      - "${NETBIRD_BIND_IP:?set NETBIRD_BIND_IP in .env}:80:80"
+      - "${NETBIRD_BIND_IP:?set NETBIRD_BIND_IP in .env}:443:443"
+    volumes:
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/certs:/certs
+    env_file: .env
+    environment:
+      - HETZNER_API_TOKEN_FILE=/run/secrets/hetzner_api_token
+    secrets:
+      - hetzner_api_token
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_PROXY_NETWORK:?set TRAEFIK_PROXY_NETWORK in .env}
+      - traefik.http.routers.traefik.rule=Host(`${TRAEFIK_DASHBOARD_HOST:?set TRAEFIK_DASHBOARD_HOST in .env}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.service=api@internal
+      - traefik.http.routers.traefik.tls.certresolver=dns
+      - traefik.http.routers.traefik.tls.domains[0].main=${BASE_DOMAIN:?set BASE_DOMAIN in .env}
+      - traefik.http.routers.traefik.tls.domains[0].sans=*.${BASE_DOMAIN:?set BASE_DOMAIN in .env}
+      - traefik.http.routers.traefik.priority=100
+    networks:
+      - socket-proxy
+      - traefik-proxy
+
+  verwaltung:
+    image: ${DEFAULT_BACKEND_IMAGE:-nginx:alpine}
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_PROXY_NETWORK:?set TRAEFIK_PROXY_NETWORK in .env}
+      - traefik.http.routers.verwaltung.rule=HostRegexp(`{subdomain:[a-z0-9-]+}.${BASE_DOMAIN:?set BASE_DOMAIN in .env}`) || Host(`${BASE_DOMAIN:?set BASE_DOMAIN in .env}`)
+      - traefik.http.routers.verwaltung.entrypoints=websecure
+      - traefik.http.routers.verwaltung.tls.certresolver=dns
+      - traefik.http.routers.verwaltung.priority=10
+      - traefik.http.services.verwaltung.loadbalancer.server.port=80
+    networks:
+      - traefik-proxy
+
+secrets:
+  hetzner_api_token:
+    file: ${SECRETS_DIR:?set SECRETS_DIR in .env}/${HETZNER_TOKEN_FILE_NAME:-hetzner_api_token.txt}
+
+networks:
+  socket-proxy:
+    internal: true
+  traefik-proxy:
+    name: ${TRAEFIK_PROXY_NETWORK:?set TRAEFIK_PROXY_NETWORK in .env}
+    external: true

@@ -1,0 +1,17 @@
+http:
+  middlewares:
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        forceSTSHeader: true
+        contentTypeNosniff: true
+        customFrameOptionsValue: "SAMEORIGIN"
+        referrerPolicy: no-referrer
+        permissionsPolicy: "camera=(),microphone=(),geolocation=()"
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true

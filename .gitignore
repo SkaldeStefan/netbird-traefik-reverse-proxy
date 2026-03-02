@@ -1,0 +1,5 @@
+.idea/
+.vscode/
+.env
+.public-sync-ignore
+traefik/certs/acme.json
